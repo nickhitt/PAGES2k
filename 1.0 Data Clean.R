@@ -2,12 +2,20 @@
 
 headers <- names(all_recons[[2]])
 
-spine <- data.frame(all_recons[[2]][[1]])
+data <- data.frame(all_recons[[2]][[1]])
 for (i in 2:length(all_recons[[2]])){
-  spine[,i] <- all_recons[[2]][[i]]
+  data[,i] <- all_recons[[2]][[i]]
 }
 
-colnames(spine) <- headers
+colnames(data) <- headers
 
-spine <- spine %>%
+data <- data %>%
   dplyr::slice(2:length(spine[,1]),)
+
+
+
+time <- data.frame(seq(1,2002,1))
+
+colnames(time) <- c("Time")
+
+
