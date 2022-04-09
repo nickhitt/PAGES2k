@@ -37,4 +37,18 @@ for (i in seq(1,length(ind1),2)){
   time <- left_join(time,dat1,copy=TRUE, by = c("Time"))
 }
 
-wide_records_even <- time
+wide_records_even <- time %>%
+  arrange(desc(time))
+
+## Need to append global temps as dependent variable
+
+gis_temp_names <- gis_temp[1,]
+colnames(gis_temp) <- gis_temp_names
+gis_temp <- gis_temp[2:nrow(gis_temp)-1,] %>%
+  select(Year, "J-D") %>%
+  rename(Time = Year, global_temp = "J-D") %>%
+  arrange(desc(Time)) %>%
+  mutate(Time = as.double((Time)))
+
+all_temps <- wide_records_even %>%
+  left_join(gis_temp, by = c("Time"))
