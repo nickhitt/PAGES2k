@@ -15,6 +15,7 @@ library(ggplot2)
 library(xgboost)
 library(XLConnect)
 library(neuralnet)
+library(plotly)
 
 `%notin%` <- Negate(`%in%`)
 

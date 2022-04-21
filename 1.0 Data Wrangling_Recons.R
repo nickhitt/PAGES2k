@@ -52,3 +52,7 @@ gis_temp <- gis_temp[2:nrow(gis_temp)-1,] %>%
 
 all_temps <- wide_records_even %>%
   left_join(gis_temp, by = c("Time"))
+
+####### Changing all data to numeric
+
+all_temps <- data.frame(lapply(all_temps,as.numeric))

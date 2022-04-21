@@ -6,10 +6,10 @@ x <- all_temps %>%
 predicted_test <- all_temps %>%
   select(global_temp) %>%
   mutate(y_pred_lm = predict(model_lm, x),
-         y_pred_nnet = predict(model_nnet, x))
-         #y_pred_rf = predict(model_rf, x)),
-         y#_pred_svml = predict(model_svml, x)),
-         #y_pred_xgbl = predict(model_xgbl, x))
+         #y_pred_nnet = predict(model_nnet, x))
+         y_pred_rf = predict(model_rf, x),
+         y_pred_svml = predict(model_svml, x),
+         y_pred_xgbl = predict(model_xgbl, x))
 
 
 time <- seq(2003,2003-(nrow(predicted_test)-1), -1)
@@ -25,9 +25,13 @@ predicted_test_long <- reshape(predicted_test, direction ="long",
                           times = var_names[1:length(var_names)-1])
 
 all_models <- predicted_test_long %>%
-  ggplot(aes(time,temperature, color = Model)) +
-  geom_point() +
-  geom_line() 
+  ggplot(aes(time,temperature)) +
+  geom_point(data = subset(predicted_test_long, Model != "global_temp"), aes(colour = Model)) +
+  geom_line(data = subset(predicted_test_long, Model != "global_temp"), aes(colour = Model)) +
+  geom_point(data = subset(predicted_test_long, Model == "global_temp"), aes(color = "black"),
+             color = "black") +
+  geom_line(data = subset(predicted_test_long, Model == "global_temp"), aes(color = "black"),
+            color = "black") 
 
 
 all_models
