@@ -4,7 +4,7 @@ library(shiny)
 ui <- fluidPage(
 
     # Application title
-    titlePanel("EDA on Pages2k Temperature Construction Data"),
+    titlePanel("ML Analysis on PAGES2k Temperature Reconstructions"),
 
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
@@ -91,6 +91,8 @@ server <- function(input, output) {
     source("~/Dropbox/R Codes/PAGES2k/0 Load Packages.R")
     all_temps <- readRDS("~/Dropbox/R Codes/PAGES2k/all_temps.rds")
     
+    dataframe <- all_temps
+    
     # Selecting Records to be included
     record_select <- function(dataframe, records_to_include){
         names <- c("Antarctic Temperature",           
@@ -102,17 +104,12 @@ server <- function(input, output) {
                    "North America.Trees Temperature",
                    "South America Temperature")
         for (i in length(names)) {
-            if (records_to_include %in% names[i]) {
-                dataframe <- dataframe
-            } else {
-                
-            }
+            if (names[i] %notin% records_to_include ) {
+                dataframe <- select(dataframe, -names[i])
+            } 
         }
+        return(dataframe)
     }
-    
-    dataframe <- all_temps
-    
-    
 
     # Interval Selection Function
     data_select <- function(dataframe, calib_interval){
@@ -160,8 +157,8 @@ server <- function(input, output) {
         # Selecting data
         x <- data_select[["train"]] %>%
             select(-global_temp, 
-                    -North.America.Pollen.Temperature, 
-                    -North.America.Trees.Temperature)
+                    -"North America Pollen Temperature", 
+                    -"North America Trees Temperature")
         
         y <- data_select[["train"]]$global_temp
         
@@ -282,8 +279,8 @@ server <- function(input, output) {
         x <- select(dataframe,
                     -Time,
                     -global_temp, 
-                    -North.America.Pollen.Temperature, 
-                    -North.America.Trees.Temperature)
+                    -"North America Pollen Temperature", 
+                    -"North America Trees Temperature")
         
         predicted <- dataframe %>%
                      mutate(model_type = predict(model, x)) %>%
@@ -321,6 +318,7 @@ server <- function(input, output) {
     
     # Put the function calls for interactive regression plot here
     output$figure <- renderPlotly({
+        dataframe <- record_select(dataframe, records_to_include())
         selected_data <- data_select(dataframe, calib_interval())
         cv_data <- cv(selected_data, train_perc(), num_folds())
         fitted_data <- model_fit(cv_data, pre_processing(), impute(), model())
@@ -344,6 +342,7 @@ server <- function(input, output) {
     
     # Put the function calls for summary table here
     output$summaryTable <- renderTable({
+        dataframe <- record_select(dataframe, records_to_include())
         selected_data <- data_select(dataframe, calib_interval())
         cv_data <- cv(selected_data, train_perc(), num_folds())
         fitted_data <- model_fit(cv_data, pre_processing(), impute(), model())
