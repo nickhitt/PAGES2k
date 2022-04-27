@@ -1,12 +1,27 @@
-library(shiny)
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(readxl)
+library(readr)
+library(randomForest)
+library(caret)
+library(stats)
+library(ClusterR)
+library(ggplot2)
+library(xgboost)
+library(XLConnect)
+library(neuralnet)
+library(plotly)
+library(RANN)
 
-# Define UI for application that draws a histogram
+`%notin%` <- Negate(`%in%`)
+
 ui <- fluidPage(
 
     # Application title
-    titlePanel("ML Analysis on PAGES2k Temperature Reconstructions"),
+    titlePanel("Machine Learning Analysis on PAGES2k Temperature Reconstructions"),
 
-    # Sidebar with a slider input for number of bins 
+    # Sidebar Layout
     sidebarLayout(
         sidebarPanel(
             checkboxGroupInput("recons_to_include",
@@ -16,16 +31,12 @@ ui <- fluidPage(
                                            "Asia Temperature",                
                                            "Australasia Temperature",
                                            "Europe Temperature" ,
-                                           "North America Pollen Temperature", 
-                                           "North America Trees Temperature",
                                            "South America Temperature"),
                                selected = c("Antarctic Temperature",           
                                             "Arctic Temperature",
                                             "Asia Temperature",                
                                             "Australasia Temperature",
                                             "Europe Temperature" ,
-                                            "North America Pollen Temperature", 
-                                            "North America Trees Temperature",
                                             "South America Temperature")),
             selectInput("plot_type",
                         "Figure to Show:",
@@ -37,7 +48,7 @@ ui <- fluidPage(
                         "Calibration Interval (CE):",
                         min = 1880,
                         max =2021,
-                        value = c(1900, 2020)),
+                        value = c(1900, 2021)),
             selectInput("model", 
                         "Machine Learning Method:", 
                         choices = c("Linear Regression", 
@@ -69,15 +80,77 @@ ui <- fluidPage(
         ),
 
         # Show a plot of the generated distribution
-        mainPanel(plotlyOutput("figure"),
-                  tableOutput("summaryTable")
-        ),
+        mainPanel(
+            tabsetPanel(
+                tabPanel("App Description",strong("Use Case"),
+                
+                                            p("This app is meant to highlight the uses and applications
+                                            of common machine learnig techniques to the Past Global Changes 2k paleocliamte dataset.
+                                            Possile use cases of this app are teaching the advantages of differet machine 
+                                            learning techniques to a dataset with MAR and MNAR data; how a particular model
+                                            may fare with different data sources, testing/training techiques, and imputation
+                                            techniques; and how global temperature may be reconstructed with machine 
+                                            learning the methods. This tool is not meant to reconstruct absolute global temperature
+                                            profiles, but rather meant to teach what statistical tools could be applied to
+                                            reconstructing global temperatures. Future iterations of this tool will employ more models
+                                            and allow for custom model tuning."),
+                         
+                                            strong("Suggested Use"),
+                                            p("To the left you will find several interactive features to use. First, select the records
+                                              you wish to include in the model. Second select your calibration interval. Third, select the
+                                              your model training parameters (which are the remaining inputs! ;) )."),
+                                            
+                                            p("Once you select the above you can choose which figure to display. The default is the 
+                                              regression figure in order to gauge model performance. The model fit can also be assessed by
+                                              'test' data against the 'real' temperature data in the 'Calibration Timeseries' figure and
+                                              examining alongside the table of summary statistics. Lastly you can see how your hindcast of 2000yrs
+                                              of gloal temperatures does! Select 2000yr hindcast for this feature."),
+                         
+                                            strong("Known Issues"),
+                         
+                                            p("In some model fits (e.g. xgBoost with many CV folds) the model make take a long time to fit.
+                                              This is normal. Thank you for your patience!"),
+                         
+                                            p("In some model fits the model may require a log calibration interval (>100yr). Calibration
+                                              intervals less than 40yrs is not recommended and may produce an error"),
+                
+                                            strong("Data Description"),
+                
+                                            p("The data used in this app is meant to illustrate the
+                                            PAGES2k Consortium continental temperature database as the explanatory variables, 
+                                            and is sourced from NCDC hosted by NOAA."),
+                         
+                                            p("The global temperature data used in this app as the dependent variable is sourced 
+                                            and hosted by NASA GIS-Temp v4."),
+                                            
+                                            strong("References:"), 
+                                            
+                                            p("PAGES2k Consortium. A global multiproxy database for temperature reconstructions 
+                                            of the Common Era. Sci Data 4, 170088 (2017). https://doi.org/10.1038/sdata.2017.88."),
+                                            
+                                            p("GISTEMP Team, 2022: GISS Surface Temperature Analysis (GISTEMP), version 4. 
+                                            NASA Goddard Institute for Space Studies. Dataset accessed 20YY-MM-DD at data.giss.nasa.gov/gistemp/.
+                                            Lenssen, N., G. Schmidt, J. Hansen, M. Menne, A. Persin, R. Ruedy, and D. Zyss, 2019: 
+                                            Improvements in the GISTEMP uncertainty model. J. Geophys. Res. Atmos., 124, no. 12, 6307-6326, doi:10.1029/2018JD029522.."),
+                                          
+                                            p("The author of the app claims no authorship of the data."),
+                
+                                            strong("Author:"),
+                         
+                                            p("Dr. Nicholas Hitt"),
+                                            p("Email: hitnavy@me.com")),
+            
+            tabPanel("Model Statistics and Visualisation",
+                     plotlyOutput("figure"), 
+                     tableOutput("summaryTable"))
+            )
+        )
     )
 )
 
 server <- function(input, output) {
     
-    records_to_include <- reactive({input$records_to_include})
+    records_to_include <- reactive({input$recons_to_include})
     calib_interval <- reactive({input$calib_interval})
     model <- reactive({input$model})
     train_perc <- reactive({input$train_perc})
@@ -86,28 +159,15 @@ server <- function(input, output) {
     impute <- reactive({input$impute})
     plot_type <- reactive({input$plot_type})
     
-    # Loading Data and Wrangling
-    setwd("~/Dropbox/R Codes/PAGES2k")
-    source("~/Dropbox/R Codes/PAGES2k/0 Load Packages.R")
-    all_temps <- readRDS("~/Dropbox/R Codes/PAGES2k/all_temps.rds")
+    # Loading Data 
+    all_temps <- readRDS("all_temps.rds")
     
     dataframe <- all_temps
     
     # Selecting Records to be included
     record_select <- function(dataframe, records_to_include){
-        names <- c("Antarctic Temperature",           
-                   "Arctic Temperature",
-                   "Asia Temperature",                
-                   "Australasia Temperature",
-                   "Europe Temperature" ,
-                   "North America Pollen Temperature", 
-                   "North America.Trees Temperature",
-                   "South America Temperature")
-        for (i in length(names)) {
-            if (names[i] %notin% records_to_include ) {
-                dataframe <- select(dataframe, -names[i])
-            } 
-        }
+        names <- c("Time", records_to_include, "global_temp")
+        dataframe <- select(dataframe, names)
         return(dataframe)
     }
 
@@ -156,9 +216,7 @@ server <- function(input, output) {
         
         # Selecting data
         x <- data_select[["train"]] %>%
-            select(-global_temp, 
-                    -"North America Pollen Temperature", 
-                    -"North America Trees Temperature")
+            select(-global_temp)
         
         y <- data_select[["train"]]$global_temp
         
@@ -230,7 +288,7 @@ server <- function(input, output) {
             ggplot(aes(time,Temperature, color = Model)) +
             geom_point() +
             geom_line() +
-            theme(panel.background = element_rect(#fill = "white", 
+            theme(panel.background = element_rect(fill = "white", 
                 colour = "black", size = 3),
                 legend.box.background = element_rect(fill = NA), 
                 legend.key = element_rect(colour = "transparent", 
@@ -248,7 +306,7 @@ server <- function(input, output) {
             ggplot(aes(model_type,GISTemp)) +
             geom_point() +
             geom_smooth(method = "lm", col = "red") +
-            theme(panel.background = element_rect(#fill = "white", 
+            theme(panel.background = element_rect(fill = "white", 
                                                   colour = "black", size = 3),
                   legend.box.background = element_rect(fill = NA), 
                   legend.key = element_rect(colour = "transparent", 
@@ -278,9 +336,7 @@ server <- function(input, output) {
         
         x <- select(dataframe,
                     -Time,
-                    -global_temp, 
-                    -"North America Pollen Temperature", 
-                    -"North America Trees Temperature")
+                    -global_temp)
         
         predicted <- dataframe %>%
                      mutate(model_type = predict(model, x)) %>%
@@ -315,10 +371,15 @@ server <- function(input, output) {
         return(timeseries_plot)
         
     }
+    #Download functions
+    filename <- function(figure, method){
+        out <- paste0(figure,method, sep = "_")
+        return(out)
+    }
     
     # Put the function calls for interactive regression plot here
     output$figure <- renderPlotly({
-        dataframe <- record_select(dataframe, records_to_include())
+        dataframe <- record_select(all_temps, records_to_include())
         selected_data <- data_select(dataframe, calib_interval())
         cv_data <- cv(selected_data, train_perc(), num_folds())
         fitted_data <- model_fit(cv_data, pre_processing(), impute(), model())
@@ -340,9 +401,9 @@ server <- function(input, output) {
         
     })
     
-    # Put the function calls for summary table here
+    # Summary table details
     output$summaryTable <- renderTable({
-        dataframe <- record_select(dataframe, records_to_include())
+        dataframe <- record_select(all_temps, records_to_include())
         selected_data <- data_select(dataframe, calib_interval())
         cv_data <- cv(selected_data, train_perc(), num_folds())
         fitted_data <- model_fit(cv_data, pre_processing(), impute(), model())
@@ -350,7 +411,7 @@ server <- function(input, output) {
         return(sum_table)
         
     })
-
+    
 }
 
 # Run the application 
